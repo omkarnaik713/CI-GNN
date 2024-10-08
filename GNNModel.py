@@ -19,8 +19,7 @@ class model(nn.Module) :
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2*hidden_dim)
         self.conv3 = GCNConv(2*hidden_dim, hidden_dim)
-        self.conv4 = GCNConv(hidden_dim, 2)
-        self.conv5 = GCNConv(2,1)
+        self.conv4 = GCNConv(hidden_dim, 1)
         
     def forward(self, x, edge_index,batch=None) : 
         x = self.conv1(x, edge_index)
@@ -35,12 +34,13 @@ class model(nn.Module) :
         x = F.relu(x)
         x = F.dropout(x, p = 0.5)
         
-        x = self.conv4(x, edge_index)
-        x = F.relu(x)
+        
         if batch != None :
+            x = self.conv4(x, edge_index)
+            x = F.relu(x)
             x = global_mean_pool(x,batch)
         else : 
-            x = self.conv5(x, edge_index)
+            x = self.conv4(x, edge_index)
             x = F.relu(x)
         return x
     
