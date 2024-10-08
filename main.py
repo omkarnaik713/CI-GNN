@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.datasets import BA2MotifDataset
-from GNNModel import model, train_rep
+from GNNModel import model
 from utils import convert_df,add_padding
 from causal_discovery import discover_graph, interpreter, edge_list
 from GNNClassifier import classifier, train
@@ -23,37 +23,14 @@ input_dim = dataset[0].x.size(1)
 output_dim = 1
 motif_dataset = DataLoader(dataset, batch_size=32,shuffle = True )
 model = model(input_dim,hidden_dim ,output_dim)
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.005, weight_decay=5e-3)
-loss_fn = torch.nn.CrossEntropyLoss()
-rep_model = train_rep(model, motif_dataset, optimizer, loss_fn )
 max_nodes = 25 # depends on the graph dataset you are working with 
+padded_graphs = add_padding(dataset,max_nodes, dataset.edge_index)
+padded_dataset = DataLoader(padded_graphs,batch_size=32, shuffle = True)
 
-# calculating node representation 
-node_representation = []
-print('Calculating Node Representation')
-for graph in dataset :
-    with torch.no_grad() :
-        rep = rep_model(dataset.x, dataset.edge_index)
-        padded_rep = F.pad(rep, (0,0,0,max_nodes-rep.size(0)))
-        node_representation.append(padded_rep)
-
-graph_df = convert_df(node_representation)
-graph_df['Label'] = dataset.y
-print('Discovering Causal Graph')
-# causal graph discovery 
-causal_graph = discover_graph(graph_df,method, alpha)
-edge_index = edge_list(causal_graph,method)
-edge_index = torch.tensor(edge_index)
-edge_index = edge_index.T
-padded_graph = add_padding(dataset, max_nodes, edge_index)
-padded_dataset = DataLoader(padded_graph, batch_size = 16, shuffle = True)
-print('Performing Classification')
 classifier_model = classifier(input_dim, hidden_dim)
-optimizer = torch.optim.Adam(classifier_model.parameters(), lr = lr, weight_decay= 5e-4)
-loss_fn = torch.nn.CrossEntropyLoss()
-loss, accuracy = train(classifier_model,padded_dataset,optimizer, loss_fn)
+
+loss, accuracy = train(classifier_model,model,padded_dataset,dataset, method , alpha)
 
 print('Accuracy : ', accuracy)
 print('Loss : ', loss)
 # display the causal graph 
-interpreter(causal_graph,method)
