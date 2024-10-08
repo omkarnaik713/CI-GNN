@@ -3,6 +3,9 @@ import torch.nn as nn
 from torch_geometric.nn import GINConv
 import torch.nn.functional as F 
 from torch_geometric.nn import global_mean_pool
+from utils import convert_df
+from torch_geometric.loader import DataLoader
+from causal_discovery import discover_graph, edge_list
 
 class classifier(nn.Module):
     def __init__(self, input_dim, hidden_dim):
@@ -35,36 +38,65 @@ class classifier(nn.Module):
         self.gnn_non_linear = nn.ReLU()
         
         
-    def forward(self, x , edge_index, edge_attribute,batch ):
+    def forward(self, x , edge_index,batch=None ):
         for conv in self.gnn_layers:
-            x = conv(x,edge_index,edge_attribute)
+            x = conv(x,edge_index)
             x = F.dropout(x)
             x = self.gnn_non_linear(x)
         x = global_mean_pool(x,batch)
         return x
         
-def train(model, loader, optimizer, loss_fn):
-    model.train()
-    total_loss = 0 
-    correct = 0 
+def train(classifier,model, loader,og_data ,method, alpha):
+    opt = torch.optim.Adam(model.parameters(),lr = 0.00001, weight_decay= 1e-3)
+    loss_fn = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(classifier.parameters(), lr = 0.00075, weight_decay=5e-4)
+    correct = 0
+    total_loss = 0
     total = 0
-    for epoch in range(250):
-        for batch in loader :
-            optimizer.zero_grad()
-            out = model(batch.x, batch.edge_index, batch.edge_attr,batch.batch)
-            pred = torch.argmax(out, dim = 1)
-            print('Pred', pred)
-            loss = loss_fn(out,batch.y)
-            print(batch.y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
-            correct += (pred==batch.y).sum().item()
-            total += batch.y.size(0)
-    print('Total Loss ', total_loss)
-    print('Total', total)
-    print('correct', correct)
-    return (total_loss)/len(loader),(correct/total)
-
-
-
+    for i in range(200):
+        if i < 50 :
+            model.train()
+            total_loss = 0
+            for batch in loader :
+                opt.zero_grad()
+                out = model(batch.x, batch.edge_index, batch.batch)
+                dataset = DataLoader(convert_df(out), batch_size = 32,shuffle = False)
+                cl_out = classifier(batch.x, batch.edge_index, batch= batch.batch )
+                pred = torch.argmax(cl_out, dim = 1)
+                loss = loss_fn(cl_out, batch.y)
+                loss.backward()
+                opt.step()
+                total_loss += loss.item()
+            print(total_loss)
+        else : 
+            if i == 50 :
+                print('Classifier Training starts from here')
+                total_loss = 0
+            model.eval()
+            classifier.train()
+            node_rep = []
+            for graph in og_data:
+                rep = model(graph.x, graph.edge_index)
+                node_rep.append(rep)
+            dataset = convert_df(node_rep)
+            dataset['label'] = og_data.y
+            print(dataset)
+            cg = discover_graph(dataset, method, alpha)
+            edge_index = edge_list(cg, method)
+            edge_index = torch.tensor(edge_index, dtype = torch.int64)
+            edge_index = edge_index.T
+            print(edge_index)
+            for batch in loader : 
+                optimizer.zero_grad()
+                
+                out_cl = classifier(batch.x, edge_index, batch.batch)
+                pred = torch.argmax(out_cl, dim = 1)
+                loss = loss_fn(out_cl, batch.y)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+                correct += (pred==batch.y).sum().item()
+                total += batch.y.size(0)
+            print(total_loss)
+            print(correct)
+    return total_loss/150 , correct/total
