@@ -17,22 +17,30 @@ class model(nn.Module) :
         super(model, self).__init__()
         
         self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, 2*hidden_dim)
-        self.conv3 = GCNConv(2*hidden_dim, hidden_dim)
-        self.conv4 = GCNConv(hidden_dim, 1)
+        self.conv2 = GCNConv(hidden_dim, hidden_dim//2)
+        self.conv3 = GCNConv(hidden_dim//2, hidden_dim)
+        self.conv5 = GCNConv(hidden_dim, hidden_dim)
+        self.conv6 = GCNConv(hidden_dim, hidden_dim//2)
+        self.conv4 = GCNConv(hidden_dim//2, 1)
         
     def forward(self, x, edge_index,batch=None) : 
         x = self.conv1(x, edge_index)
         x = F.relu(x)
-        x = F.dropout(x,p = 0.5)
+        x = F.dropout(x,p = 0.2,training = True)
         
         x = self.conv2(x,edge_index)
         x = F.relu(x)
-        x = F.dropout(x, p = 0.5)
+        x = F.dropout(x, p = 0.2, training=True)
         
         x = self.conv3(x, edge_index)
         x = F.relu(x)
-        x = F.dropout(x, p = 0.5)
+        x = F.dropout(x, p = 0.2,training = True)
+        
+        x = self.conv5(x, edge_index)
+        x = F.relu(x)
+        
+        x = self.conv6(x, edge_index)
+        x = F.relu(x)
         
         
         if batch != None :
